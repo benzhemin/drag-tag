@@ -32,8 +32,10 @@ class TagCell: UICollectionViewCell{
         
         self.addSubview(tagLabel)
         
-        self.layer.borderColor = UIColor.lightGrayColor().CGColor
-        self.layer.borderWidth = 1.0
+        tagLabel.textColor = UIColor.colorWithRGB(101, g: 101, b: 101)
+        tagLabel.layer.cornerRadius = CGRectGetHeight(self.contentView.bounds) * 0.5
+        tagLabel.layer.borderColor = UIColor.colorWithRGB(211, g: 211, b: 211).CGColor;
+        tagLabel.layer.borderWidth = 0.45
         
         makeConstraints()
     }
@@ -146,17 +148,6 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
         }
     
         let state = pressGesture.state
-        
-        /*
-        if state == .Began {
-            self.tagCV.performBatchUpdates({
-                self.tagCV.moveItemAtIndexPath(indexFactory(5), toIndexPath: indexFactory(0))
-                }) { (finish) in
-                
-            }
-        }
-        return ;
-        */
         
         switch state {
         case .Began:
