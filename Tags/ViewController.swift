@@ -8,6 +8,38 @@
 
 import UIKit
 
+class DragFlowLayout: UICollectionViewFlowLayout {
+    
+    override func prepareForCollectionViewUpdates(updateItems: [UICollectionViewUpdateItem]) {
+        
+        updateItems.forEach { (updateItem) in
+            
+            if updateItem.updateAction == .Move {
+                print("updateItem before \(updateItem.indexPathBeforeUpdate?.item) after \(updateItem.indexPathAfterUpdate?.item)")
+            }
+            
+        }
+        
+    }
+    
+    override func initialLayoutAttributesForAppearingItemAtIndexPath(itemIndexPath: NSIndexPath) -> UICollectionViewLayoutAttributes? {
+        let layout = super.initialLayoutAttributesForAppearingItemAtIndexPath(itemIndexPath)
+        
+        //print("initial layout indexPath \(itemIndexPath.item)")
+        
+        return layout
+    }
+    
+    override func finalLayoutAttributesForDisappearingItemAtIndexPath(itemIndexPath: NSIndexPath) -> UICollectionViewLayoutAttributes? {
+        let layout = super.finalLayoutAttributesForDisappearingItemAtIndexPath(itemIndexPath)
+        
+        //print("final layout indexPath \(itemIndexPath.item)")
+        
+        return layout
+    }
+    
+}
+
 class TagCell: UICollectionViewCell{
     static let fontSize: CGFloat = 16
     static let swingKey = "SwingAnimationkey"
@@ -53,8 +85,8 @@ class TagCell: UICollectionViewCell{
     func startSwingAnimation(){
         
         let animation = CABasicAnimation(keyPath: "transform.rotation.z")
-        animation.fromValue = NSNumber(float: Float(M_PI_2) / 30)
-        animation.toValue = NSNumber(float: -Float(M_PI_2) / 30)
+        animation.fromValue = NSNumber(float: Float(M_PI_2) / 20)
+        animation.toValue = NSNumber(float: -Float(M_PI_2) / 20)
         animation.duration = 0.15
         animation.autoreverses = true
         animation.repeatCount = MAXFLOAT
@@ -76,6 +108,7 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
     
     var curIndexPath : NSIndexPath!
     var toIndexPath : NSIndexPath?
+    var curCell: UICollectionViewCell!
     
     required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
@@ -90,13 +123,13 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
         
         view.backgroundColor = UIColor.whiteColor()
         
-        let flowLayout = UICollectionViewFlowLayout()
+        let flowLayout = DragFlowLayout()
         flowLayout.minimumInteritemSpacing = 15
         flowLayout.minimumLineSpacing = 15
         flowLayout.sectionInset = UIEdgeInsets(top: 60, left: 20, bottom: 10, right: 20)
         flowLayout.scrollDirection = UICollectionViewScrollDirection.Vertical
         
-        tagCV = UICollectionView(frame: self.view.bounds, collectionViewLayout: flowLayout)
+        tagCV = UICollectionView(frame: CGRectZero, collectionViewLayout: flowLayout)
         tagCV.backgroundColor = UIColor.whiteColor()
         
         tagCV.alwaysBounceVertical = true
@@ -107,6 +140,10 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
         tagCV.registerClass(TagCell.self, forCellWithReuseIdentifier: String(TagCell))
         
         self.view.addSubview(tagCV)
+        
+        tagCV.snp_makeConstraints { (make) in
+            make.edges.equalTo(self.view)
+        }
         
         let longTapGesture = UILongPressGestureRecognizer(target: self, action: #selector(longPress(_:)))
         tagCV.addGestureRecognizer(longTapGesture)
@@ -141,17 +178,46 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
         return CGSize(width: size.width + padding*3.0, height: size.height + padding)
     }
     
-    func longPress(pressGesture: UILongPressGestureRecognizer){
+    func locationForLayoutIndexPath(point: CGPoint) -> (layout:UICollectionViewLayoutAttributes?, upperLeft:CGPoint, bottomRight:CGPoint) {
         
-        let indexFactory = {(item: Int) -> NSIndexPath in
-            return NSIndexPath(forRow: item, inSection: 0)
+        let visibleCells = self.tagCV.visibleCells()
+        
+        var layoutList = [UICollectionViewLayoutAttributes]()
+        for cell in visibleCells {
+            let indexPath = self.tagCV.indexPathForCell(cell)!
+            layoutList.append(self.tagCV.layoutAttributesForItemAtIndexPath(indexPath)!)
         }
+        
+        let layout = layoutList.filter { (layout) -> Bool in
+            return layout.frame.contains(point)
+        }.first
+        
+        let upperLeft = layoutList.first!.frame.origin
+        let bottomRight = { (layoutList: [UICollectionViewLayoutAttributes]) -> CGPoint in
+            var point = CGPointZero
+            
+            for lo in layoutList {
+                let maxY = CGRectGetMaxY(lo.frame)
+                if  maxY > point.y {
+                    point.y = maxY
+                    point.x = CGRectGetMaxX(lo.frame)
+                }
+            }
+            
+            return point
+        }(layoutList)
+        
+        return (layout, upperLeft, bottomRight)
+    }
+    
+    func longPress(pressGesture: UILongPressGestureRecognizer){
     
         let state = pressGesture.state
         
+        self.animatingVisibleCells(state)
+        
         switch state {
         case .Began:
-            self.animatingVisibleCells(state)
             
             let location = pressGesture.locationInView(self.tagCV)
             
@@ -160,86 +226,82 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
             
             self.curIndexPath = ip
             
-            print("began press indexpath \(ip.item)")
-            
             let cell = self.tagCV.cellForItemAtIndexPath(ip)!
             cell.transform = CGAffineTransformMakeScale(1.1, 1.02)
+            self.curCell = cell
             
         case .Changed:
             
             let location = pressGesture.locationInView(self.tagCV)
-            let toIP = self.tagCV.indexPathForItemAtPoint(location)
             
-            let cell = self.tagCV.cellForItemAtIndexPath(self.curIndexPath)
-            cell?.center = location
+            self.curCell.center = location
             
+            /*
+            let lastCell = self.tagCV.visibleCells().last!
+            let lastIndexPath = self.tagCV.indexPathForCell(lastCell)!
             
-            if let toIP = toIP where toIP.item != self.curIndexPath.item  {
-                guard self.toIndexPath != toIP else { return }
+            let toIP: NSIndexPath? = self.tagCV.indexPathForItemAtPoint(location) ?? lastIndexPath
+            */
+            
+            let moveTag = { (to: NSIndexPath) in
                 
-                print("perform move from \(self.curIndexPath.item) to \(toIP.item)")
-                
-                self.toIndexPath = toIP
+                self.toIndexPath = to
                 
                 let val = self.tags.removeAtIndex(self.curIndexPath.item)
-                self.tags.insert(val, atIndex: toIP.item)
+                self.tags.insert(val, atIndex: to.item)
                 
-                print("move from \(self.curIndexPath.item) to \(toIP.item)")
+                self.tagCV.moveItemAtIndexPath(self.curIndexPath, toIndexPath: to)
                 
-                self.tagCV.moveItemAtIndexPath(self.curIndexPath, toIndexPath: toIP)
-                
-                /*
-                self.tagCV.performBatchUpdates({
-                    
-                    
-                    
-                    /*
-                    if toItem < curItem {
-                        
-                        for i in curItem-1...toItem {
-                        
-                        //for i in (curItem-1).stride(to: toItem, by: -1) {
-                            self.tagCV.moveItemAtIndexPath(indexFactory(i), toIndexPath: indexFactory(i+1))
-                        }
-                        
-                    }
-                    */
-                    
-                }, completion: { (finish) in
-                    
-                    /*
-                    let fromValue = self.tags[self.curIndexPath.item]
-                    self.tags[self.curIndexPath.item] = self.tags[toIP.item]
-                    self.tags[toIP.item] = fromValue
-                      */
-                })
- 
-                */
-                
+                self.curIndexPath = to
             }
             
             
+            let layoutBorderTurple = locationForLayoutIndexPath(location)
+            
+            guard let toLayout = layoutBorderTurple.layout else {
+                
+                //简单处理
+                if location.y < layoutBorderTurple.upperLeft.y {
+                    self.toIndexPath = NSIndexPath(forRow: 0, inSection: 0)
+                }
+                else if location.y > layoutBorderTurple.bottomRight.y {
+                    self.toIndexPath = NSIndexPath(forRow: self.tags.count-1, inSection: 0)
+                }
+                
+                if let to = toIndexPath where to.item != self.curIndexPath.item{
+                    print("------move to \(to.item) current \(self.curIndexPath.item)")
+                    
+                    moveTag(to)
+                }
+                
+                return
+            }
+            
+            if toLayout.indexPath.item != self.curIndexPath.item {
+                print("move to \(self.toIndexPath?.item) current \(self.curIndexPath.item)")
+                
+                moveTag(toLayout.indexPath)
+            }
             
         case .Ended:
-            print("long press end")
+            
+            let toIP = self.toIndexPath ?? self.curIndexPath
+            let layout = self.tagCV.layoutAttributesForItemAtIndexPath(toIP!)
+            
+            if let layout = layout {
+            
+                UIView.animateWithDuration(0.3, animations: {
+                    self.curCell.center = layout.center
+                })
+            }
+            
+            self.curCell.transform = CGAffineTransformIdentity
+            
             self.toIndexPath = nil
-            
-            let cell = self.tagCV.cellForItemAtIndexPath(self.curIndexPath)!
-            
-            let layout = self.tagCV.layoutAttributesForItemAtIndexPath(self.curIndexPath)!
-            
-            UIView.animateWithDuration(0.3, animations: { 
-                cell.center = layout.center
-            })
-            
-            cell.transform = CGAffineTransformIdentity
-            
-            self.animatingVisibleCells(state)
             
         default:
             break
         }
-        
     }
     
     func animatingVisibleCells(phase: UIGestureRecognizerState){
@@ -257,10 +319,3 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
         }
     }
 }
-
-
-
-
-
-
-
