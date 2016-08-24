@@ -26,10 +26,8 @@ class DragFlowLayout: UICollectionViewFlowLayout {
         let layout = super.initialLayoutAttributesForAppearingItemAtIndexPath(itemIndexPath)
         
         if (itemIndexPath.item == toItem) {
-            print("initial \(toItem) to layout center \(String(layout?.center))")
-            
             //修复toItem 跳变的bug
-            layout?.transform = CGAffineTransformMakeScale(1.01, 1.01)
+            layout?.transform = CGAffineTransformMakeScale(1.1, 1.1)
         }
         
         return layout
@@ -38,7 +36,7 @@ class DragFlowLayout: UICollectionViewFlowLayout {
 
 class TagCell: UICollectionViewCell{
     static let fontSize: CGFloat = 16
-    static let swingKey = "SwingAnimationkey"
+    static let waggleKey = "WaggleSwingAnimationkey"
     
     var tagLabel: UILabel!
     
@@ -78,20 +76,20 @@ class TagCell: UICollectionViewCell{
         self.layer.cornerRadius = self.bounds.height/2
     }
     
-    func startSwingAnimation(){
+    func startWaggleAnimation(){
         
         let animation = CABasicAnimation(keyPath: "transform.rotation.z")
-        animation.fromValue = NSNumber(float: Float(M_PI_2) / 20)
-        animation.toValue = NSNumber(float: -Float(M_PI_2) / 20)
+        animation.fromValue = NSNumber(float: Float(M_PI_4) / 10)
+        animation.toValue = NSNumber(float: -Float(M_PI_4) / 10)
         animation.duration = 0.15
         animation.autoreverses = true
         animation.repeatCount = MAXFLOAT
         
-        self.layer.addAnimation(animation, forKey: TagCell.swingKey)
+        self.layer.addAnimation(animation, forKey: TagCell.waggleKey)
     }
     
-    func endSwingAnimation(){
-        self.layer.removeAnimationForKey(TagCell.swingKey)
+    func endWaggleAnimation(){
+        self.layer.removeAnimationForKey(TagCell.waggleKey)
     }
 }
 
@@ -104,7 +102,7 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
     
     var curIndexPath : NSIndexPath!
     var toIndexPath : NSIndexPath?
-    var curCell: UICollectionViewCell!
+    var curCell: UICollectionViewCell?
     
     required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
@@ -170,7 +168,7 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
         
         let tag = tags[indexPath.item] as NSString
         
-        let padding: CGFloat = 13
+        let padding: CGFloat = 12
         
         let attri = [NSFontAttributeName:UIFont.systemFontOfSize(TagCell.fontSize)]
         let size = tag.sizeWithAttributes(attri)
@@ -178,14 +176,11 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
         return CGSize(width: size.width + padding*3.0, height: size.height + padding)
     }
     
-    func locationForLayoutIndexPath(point: CGPoint) -> (layout:UICollectionViewLayoutAttributes?, upperLeft:CGPoint, bottomRight:CGPoint) {
+    func locationForLayoutBorderTurple(point: CGPoint) -> (layout:UICollectionViewLayoutAttributes?, upperLeft:CGPoint, bottomRight:CGPoint) {
         
-        let visibleCells = self.tagCV.visibleCells()
-        
-        var layoutList = [UICollectionViewLayoutAttributes]()
-        for cell in visibleCells {
+        let layoutList = self.tagCV.visibleCells().flatMap { (cell) -> UICollectionViewLayoutAttributes? in
             let indexPath = self.tagCV.indexPathForCell(cell)!
-            layoutList.append(self.tagCV.layoutAttributesForItemAtIndexPath(indexPath)!)
+            return self.tagCV.layoutAttributesForItemAtIndexPath(indexPath)
         }
         
         let layout = layoutList.filter { (layout) -> Bool in
@@ -193,48 +188,38 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
         }.first
         
         let upperLeft = layoutList.first!.frame.origin
-        let bottomRight = { (layoutList: [UICollectionViewLayoutAttributes]) -> CGPoint in
-            var point = CGPointZero
-            
-            for lo in layoutList {
-                let maxY = CGRectGetMaxY(lo.frame)
-                if  maxY > point.y {
-                    point.y = maxY
-                    point.x = CGRectGetMaxX(lo.frame)
-                }
+        let bottomRight = layoutList.reduce(CGPointZero) { (point, layout) -> CGPoint in
+            let maxY = CGRectGetMaxY(layout.frame)
+            if maxY > point.y {
+                return CGPoint(x: CGRectGetMaxX(layout.frame), y: maxY)
             }
-            
             return point
-        }(layoutList)
+        }
         
         return (layout, upperLeft, bottomRight)
     }
     
     func longPress(pressGesture: UILongPressGestureRecognizer){
     
+        let location = pressGesture.locationInView(self.tagCV)
         let state = pressGesture.state
-        
-        self.animatingVisibleCells(state)
         
         switch state {
         case .Began:
             
-            let location = pressGesture.locationInView(self.tagCV)
-            
             let indexPath = self.tagCV.indexPathForItemAtPoint(location)
             guard let ip = indexPath else { return }
             
+            self.animatingVisibleCells(state)
             self.curIndexPath = ip
             
-            let cell = self.tagCV.cellForItemAtIndexPath(ip)!
-            cell.transform = CGAffineTransformMakeScale(1.1, 1.05)
-            self.curCell = cell
+            curCell = self.tagCV.cellForItemAtIndexPath(ip)
+            curCell?.transform = CGAffineTransformMakeScale(1.2, 1.2)
             
         case .Changed:
             
-            let location = pressGesture.locationInView(self.tagCV)
-            
-            self.curCell.center = location
+            guard let cell = self.curCell else { return }
+            cell.center = location
             
             let moveTag = { (to: NSIndexPath) in
                 
@@ -248,16 +233,16 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
                 self.curIndexPath = to
             }
             
+            let layoutBorder = locationForLayoutBorderTurple(location)
             
-            let layoutBorderTurple = locationForLayoutIndexPath(location)
-            
-            guard let toLayout = layoutBorderTurple.layout else {
-                
+            //location 没有对应的layout，判断边界
+            guard let toLayout = layoutBorder.layout else {
+    
                 //简单处理
-                if location.y < layoutBorderTurple.upperLeft.y {
+                if location.y < layoutBorder.upperLeft.y {
                     self.toIndexPath = NSIndexPath(forRow: 0, inSection: 0)
                 }
-                else if location.y > layoutBorderTurple.bottomRight.y {
+                else if location.y > layoutBorder.bottomRight.y {
                     self.toIndexPath = NSIndexPath(forRow: self.tags.count-1, inSection: 0)
                 }
                 
@@ -273,20 +258,28 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
             }
             
         case .Ended:
-            
+            /*
+            目标indexPath，如果有moveItem发生 toIP = self.toIndexPath
+             如果没有moveItem发生，toIP为当前的indexPath
+            */
             let toIP = self.toIndexPath ?? self.curIndexPath
-            let layout = self.tagCV.layoutAttributesForItemAtIndexPath(toIP!)
+            guard let to = toIP else { return }
+    
+            let layout = self.tagCV.layoutAttributesForItemAtIndexPath(to)
             
             if let layout = layout {
-            
                 UIView.animateWithDuration(0.3, animations: {
-                    self.curCell.center = layout.center
+                    self.curCell?.center = layout.center
                 })
             }
             
-            self.curCell.transform = CGAffineTransformIdentity
+            self.curCell?.transform = CGAffineTransformIdentity
             
+            //恢复原状
             self.toIndexPath = nil
+            self.curCell = nil
+            
+            self.animatingVisibleCells(state)
             
         default:
             break
@@ -300,10 +293,10 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
         for cell in cells {
         
             if phase == .Began {
-                cell.startSwingAnimation()
+                cell.startWaggleAnimation()
             }
             else if phase == .Ended {
-                cell.endSwingAnimation()
+                cell.endWaggleAnimation()
             }
         }
     }
