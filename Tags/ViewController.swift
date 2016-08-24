@@ -9,35 +9,31 @@
 import UIKit
 
 class DragFlowLayout: UICollectionViewFlowLayout {
+
+    var toItem: Int?
     
     override func prepareForCollectionViewUpdates(updateItems: [UICollectionViewUpdateItem]) {
         
         updateItems.forEach { (updateItem) in
             
             if updateItem.updateAction == .Move {
-                print("updateItem before \(updateItem.indexPathBeforeUpdate?.item) after \(updateItem.indexPathAfterUpdate?.item)")
+                toItem = updateItem.indexPathAfterUpdate?.item
             }
-            
         }
-        
     }
     
     override func initialLayoutAttributesForAppearingItemAtIndexPath(itemIndexPath: NSIndexPath) -> UICollectionViewLayoutAttributes? {
         let layout = super.initialLayoutAttributesForAppearingItemAtIndexPath(itemIndexPath)
         
-        //print("initial layout indexPath \(itemIndexPath.item)")
+        if (itemIndexPath.item == toItem) {
+            print("initial \(toItem) to layout center \(String(layout?.center))")
+            
+            //修复toItem 跳变的bug
+            layout?.transform = CGAffineTransformMakeScale(1.01, 1.01)
+        }
         
         return layout
     }
-    
-    override func finalLayoutAttributesForDisappearingItemAtIndexPath(itemIndexPath: NSIndexPath) -> UICollectionViewLayoutAttributes? {
-        let layout = super.finalLayoutAttributesForDisappearingItemAtIndexPath(itemIndexPath)
-        
-        //print("final layout indexPath \(itemIndexPath.item)")
-        
-        return layout
-    }
-    
 }
 
 class TagCell: UICollectionViewCell{
@@ -148,6 +144,10 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
         let longTapGesture = UILongPressGestureRecognizer(target: self, action: #selector(longPress(_:)))
         tagCV.addGestureRecognizer(longTapGesture)
  
+        
+        //slow animation
+        //UIApplication.sharedApplication().windows[0].layer.speed = 0.1
+        
     }
     
     func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
@@ -227,7 +227,7 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
             self.curIndexPath = ip
             
             let cell = self.tagCV.cellForItemAtIndexPath(ip)!
-            cell.transform = CGAffineTransformMakeScale(1.1, 1.02)
+            cell.transform = CGAffineTransformMakeScale(1.1, 1.05)
             self.curCell = cell
             
         case .Changed:
@@ -235,13 +235,6 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
             let location = pressGesture.locationInView(self.tagCV)
             
             self.curCell.center = location
-            
-            /*
-            let lastCell = self.tagCV.visibleCells().last!
-            let lastIndexPath = self.tagCV.indexPathForCell(lastCell)!
-            
-            let toIP: NSIndexPath? = self.tagCV.indexPathForItemAtPoint(location) ?? lastIndexPath
-            */
             
             let moveTag = { (to: NSIndexPath) in
                 
@@ -269,8 +262,6 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
                 }
                 
                 if let to = toIndexPath where to.item != self.curIndexPath.item{
-                    print("------move to \(to.item) current \(self.curIndexPath.item)")
-                    
                     moveTag(to)
                 }
                 
@@ -278,8 +269,6 @@ class ViewController: UIViewController, UICollectionViewDelegateFlowLayout, UICo
             }
             
             if toLayout.indexPath.item != self.curIndexPath.item {
-                print("move to \(self.toIndexPath?.item) current \(self.curIndexPath.item)")
-                
                 moveTag(toLayout.indexPath)
             }
             
